@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nitro-image"
+version = "0.3.0"
+description = "Fast, friendly image processing for web apps and SaaS"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.10"
+dependencies = ["Pillow>=10.0"]
+keywords = ["image", "processing", "thumbnail", "resize", "webp", "optimization"]
+
+[project.optional-dependencies]
+url = ["httpx"]
+avif = ["pillow-avif-plugin"]
+blur = ["blurhash-python"]
+all = ["httpx", "pillow-avif-plugin", "blurhash-python"]
+dev = ["pytest", "pytest-cov", "httpx"]
+
+[project.urls]
+Homepage = "https://github.com/nitrosh/nitro-image"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nitro_img"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
