@@ -1,4 +1,4 @@
-# nitro-image
+# Nitro Image
 
 Fast, friendly image processing for Python web apps and SaaS.
 
