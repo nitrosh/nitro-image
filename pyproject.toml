@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nitro-image"
-version = "0.3.0"
+version = "1.0.0"
 description = "Fast, friendly image processing for web apps and SaaS"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -12,15 +12,39 @@ requires-python = ">=3.10"
 dependencies = ["Pillow>=10.0"]
 keywords = ["image", "processing", "thumbnail", "resize", "webp", "optimization"]
 
+authors = [
+    { name = "Sean Nieuwoudt", email = "sean@underwulf.com" }
+]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+    "Natural Language :: English"
+]
+
 [project.optional-dependencies]
 url = ["httpx"]
 avif = ["pillow-avif-plugin"]
 blur = ["blurhash-python"]
 all = ["httpx", "pillow-avif-plugin", "blurhash-python"]
-dev = ["pytest", "pytest-cov", "httpx"]
+dev = ["pytest", "pytest-cov", "httpx", "black", "flake8"]
 
 [project.urls]
 Homepage = "https://github.com/nitrosh/nitro-image"
+Documentation = "https://github.com/nitro-sh/nitro-image#readme"
+Repository = "https://github.com/nitro-sh/nitro-image"
+Issues = "https://github.com/nitro-sh/nitro-image/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nitro_img"]
