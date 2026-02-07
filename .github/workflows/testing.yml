@@ -1,4 +1,4 @@
-name: Test Nitro CLI
+name: Unit Tests and Linting
 
 on:
   push:
