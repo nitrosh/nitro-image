@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Callable
+
 from PIL import Image as PILImage
 from PIL.ExifTags import Base as ExifBase
+
+Op = Callable[[PILImage.Image], PILImage.Image]
 
 
 def auto_orient(img: PILImage.Image) -> PILImage.Image:
@@ -31,7 +35,7 @@ def auto_orient(img: PILImage.Image) -> PILImage.Image:
         return img
 
 
-def strip_metadata() -> callable:
+def strip_metadata() -> Op:
     """Remove all EXIF, IPTC, and XMP metadata."""
     def _strip(img: PILImage.Image) -> PILImage.Image:
         cleaned = PILImage.frombytes(img.mode, img.size, img.tobytes())

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Callable
+
 from PIL import Image as PILImage
 
 from ..types import Anchor
+
+Op = Callable[[PILImage.Image], PILImage.Image]
 
 
 _ANCHOR_MAP: dict[str, tuple[float, float]] = {
@@ -24,7 +28,7 @@ def crop(
     width: int,
     height: int,
     anchor: Anchor = "center",
-) -> callable:
+) -> Op:
     """Crop to exact dimensions from the given anchor point."""
     def _crop(img: PILImage.Image) -> PILImage.Image:
         img_w, img_h = img.size

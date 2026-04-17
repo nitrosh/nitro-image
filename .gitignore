@@ -38,3 +38,5 @@ nitro-img-plan.md
 .claude
 CLAUDE.md
 .ruff_cache
+examples/output/
+examples/samples/
