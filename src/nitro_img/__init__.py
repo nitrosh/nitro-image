@@ -14,7 +14,7 @@ from .errors import (
 )
 from .types import Format, Position, ResizeStrategy
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 __all__ = [
     "Image",
