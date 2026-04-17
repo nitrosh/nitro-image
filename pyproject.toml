@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nitro-image"
-version = "1.0.1"
+version = "1.0.2"
 description = "Fast, friendly image processing for web apps and SaaS"
 readme = "README.md"
 license = "BSD-3-Clause"
