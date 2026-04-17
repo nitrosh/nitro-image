@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import IO
 
-from PIL import Image as PILImage, ImageDraw
+from PIL import Image as PILImage, ImageDraw, ImageFont
 
 from .types import Format
 from . import loaders
@@ -86,11 +86,9 @@ class Presets:
         # Draw initials
         font_size = size // 2
         try:
-            font = __import__("PIL.ImageFont", fromlist=["ImageFont"]).truetype(
-                "DejaVuSans-Bold.ttf", font_size
-            )
+            font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
         except OSError:
-            font = __import__("PIL.ImageFont", fromlist=["ImageFont"]).load_default()
+            font = ImageFont.load_default()
 
         bbox = draw.textbbox((0, 0), initials.upper(), font=font)
         text_w = bbox[2] - bbox[0]

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Callable
+
 from PIL import Image as PILImage
+
+Op = Callable[[PILImage.Image], PILImage.Image]
 
 
 def resize_fit(
@@ -10,7 +14,7 @@ def resize_fit(
     height: int | None = None,
     *,
     allow_upscale: bool = False,
-) -> callable:
+) -> Op:
     """Resize to fit within dimensions, preserving aspect ratio."""
     def _resize(img: PILImage.Image) -> PILImage.Image:
         orig_w, orig_h = img.size
@@ -49,7 +53,7 @@ def thumbnail(
     height: int,
     *,
     allow_upscale: bool = False,
-) -> callable:
+) -> Op:
     """Generate a thumbnail that fits within width x height."""
     def _thumbnail(img: PILImage.Image) -> PILImage.Image:
         if not allow_upscale and img.size[0] <= width and img.size[1] <= height:
@@ -66,7 +70,7 @@ def cover(
     height: int,
     *,
     allow_upscale: bool = False,
-) -> callable:
+) -> Op:
     """Resize to cover dimensions, then center-crop the overflow."""
     def _cover(img: PILImage.Image) -> PILImage.Image:
         orig_w, orig_h = img.size
@@ -94,7 +98,7 @@ def contain(
     bg: str = "white",
     *,
     allow_upscale: bool = False,
-) -> callable:
+) -> Op:
     """Resize to fit within dimensions, pad the remainder with bg color."""
     def _contain(img: PILImage.Image) -> PILImage.Image:
         orig_w, orig_h = img.size
