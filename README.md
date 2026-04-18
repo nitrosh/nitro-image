@@ -5,7 +5,7 @@ Fast, friendly image processing for Python web apps and SaaS. Nitro Image wraps 
 [![PyPI](https://img.shields.io/pypi/v/nitro-image?color=green)](https://pypi.org/project/nitro-image/)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/nitro-image)](https://pypi.org/project/nitro-image/)
 [![PyPI - License](https://img.shields.io/pypi/l/nitro-image)](https://pypi.org/project/nitro-image/)
-[![image](https://img.shields.io/github/actions/workflow/status/nitrosh/nitro-image/test.yml?branch=main)](https://github.com/nitrosh/nitro-image/actions?query=branch%3Amain)
+[![image](https://img.shields.io/github/actions/workflow/status/nitrosh/nitro-image/testing.yml?branch=main)](https://github.com/nitrosh/nitro-image/actions?query=branch%3Amain)
 
 ## Installation
 
