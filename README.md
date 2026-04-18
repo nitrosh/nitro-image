@@ -2,6 +2,28 @@
 
 Fast, friendly image processing for Python web apps and SaaS. Nitro Image wraps [Pillow](https://pillow.readthedocs.io/) with a chainable, lazy-evaluated pipeline so you can resize, convert, optimize, and generate responsive image sets with one fluent call.
 
+[![PyPI](https://img.shields.io/pypi/v/nitro-image?color=green)](https://pypi.org/project/nitro-image/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/nitro-image)](https://pypi.org/project/nitro-image/)
+[![PyPI - License](https://img.shields.io/pypi/l/nitro-image)](https://pypi.org/project/nitro-image/)
+[![image](https://img.shields.io/github/actions/workflow/status/nitrosh/nitro-image/test.yml?branch=main)](https://github.com/nitrosh/nitro-image/actions?query=branch%3Amain)
+
+## Installation
+
+```bash
+pip install nitro-image
+```
+
+Optional extras:
+
+```bash
+pip install nitro-image[url]   # Load images from URLs (httpx)
+pip install nitro-image[avif]  # AVIF format support
+pip install nitro-image[blur]  # BlurHash generation
+pip install nitro-image[all]   # Everything above
+```
+
+## Quickstart
+
 ```python
 from nitro_img import Image
 
@@ -21,21 +43,6 @@ Image("photo.jpg").resize(800).webp(quality=80).save("photo.webp")
 - **Framework Integrations** - One-line response helpers for Django, Flask, and FastAPI
 - **Presets** - Opinionated one-call helpers for thumbnails, avatars, OG images, and banners
 - **Optimization** - Target-size encoding with automatic quality tuning
-
-## Installation
-
-```bash
-pip install nitro-image
-```
-
-Optional extras:
-
-```bash
-pip install nitro-image[url]   # Load images from URLs (httpx)
-pip install nitro-image[avif]  # AVIF format support
-pip install nitro-image[blur]  # BlurHash generation
-pip install nitro-image[all]   # Everything above
-```
 
 ### AI Assistant Integration
 
