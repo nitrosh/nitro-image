@@ -31,7 +31,12 @@ def mirror() -> Op:
 
 
 def grayscale() -> Op:
-    """Convert the image to grayscale."""
+    """Convert the image to grayscale, preserving any alpha channel."""
     def _grayscale(img: PILImage.Image) -> PILImage.Image:
+        if img.mode == "RGBA":
+            alpha = img.getchannel("A")
+            gray = img.convert("L").convert("RGB").convert("RGBA")
+            gray.putalpha(alpha)
+            return gray
         return img.convert("L").convert("RGB")
     return _grayscale

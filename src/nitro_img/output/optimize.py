@@ -54,6 +54,27 @@ def optimize(
     return data, min_quality
 
 
+def _has_meaningful_alpha(img: PILImage.Image) -> bool:
+    if img.mode not in ("RGBA", "LA", "PA"):
+        return False
+    if img.mode == "RGBA":
+        extrema = img.getchannel("A").getextrema()
+        return extrema != (255, 255)
+    return True
+
+
+def pick_format(img: PILImage.Image) -> Format:
+    """Pick a sensible output format for ``img`` without encoding twice.
+
+    Mirrors :func:`auto_format`'s decision but skips the WebP/JPEG size
+    comparison so callers like :func:`optimize` can run their own quality
+    search against a single format.
+    """
+    if _has_meaningful_alpha(img):
+        return Format.PNG
+    return Format.WEBP
+
+
 def auto_format(img: PILImage.Image, quality: int | None = None) -> tuple[bytes, Format]:
     """Pick the best format for the image content.
 
@@ -61,21 +82,10 @@ def auto_format(img: PILImage.Image, quality: int | None = None) -> tuple[bytes,
     - Photographic content -> WebP (smaller than JPEG)
     - Fallback -> WebP
     """
-    has_alpha = img.mode in ("RGBA", "LA", "PA")
-
-    if has_alpha:
-        # Check if alpha channel is actually used
-        if img.mode == "RGBA":
-            alpha = img.getchannel("A")
-            extrema = alpha.getextrema()
-            if extrema == (255, 255):
-                has_alpha = False  # Fully opaque, alpha not needed
-
-    if has_alpha:
+    if _has_meaningful_alpha(img):
         data = encode(img, Format.PNG)
         return data, Format.PNG
 
-    # Compare WebP vs JPEG size at equivalent quality
     webp_data = encode(img, Format.WEBP, quality=quality)
     jpeg_data = encode(img, Format.JPEG, quality=quality)
 

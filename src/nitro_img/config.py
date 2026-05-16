@@ -17,8 +17,13 @@ class Config:
     Attributes:
         max_input_size: Maximum accepted input size in bytes. Larger
             inputs raise :class:`ImageSizeError`.
+        max_pixels: Maximum decoded pixel count for any loaded image.
+            Guards against decompression-bomb attacks where a tiny file
+            expands to a huge raster. Larger inputs raise
+            :class:`ImageSizeError`.
         max_output_dimensions: Maximum width or height in pixels for any
-            resize result.
+            resize result. Operations that would exceed this raise
+            :class:`ImageSizeError`.
         default_jpeg_quality: JPEG quality used when no explicit value is
             passed to ``.jpeg()`` or an output method.
         default_webp_quality: WebP quality used when no explicit value is
@@ -32,7 +37,11 @@ class Config:
             the pipeline runs.
         url_timeout: Request timeout in seconds for ``Image.from_url``.
         url_max_size: Maximum accepted response size in bytes for
-            ``Image.from_url``.
+            ``Image.from_url``. The download is aborted as soon as this
+            cap is exceeded; the body is never fully buffered above it.
+        url_allowed_schemes: URL schemes accepted by ``Image.from_url``.
+            Defaults to HTTP and HTTPS to block ``file://`` and SSRF
+            vectors like the cloud metadata endpoint.
 
     Example:
         >>> from nitro_img import config
@@ -40,6 +49,7 @@ class Config:
     """
 
     max_input_size: int = 50_000_000       # 50 MB
+    max_pixels: int = 178_956_970          # ~179 Mpx (Pillow's default cap)
     max_output_dimensions: int = 10_000    # 10k px
     default_jpeg_quality: int = 85
     default_webp_quality: int = 80
@@ -49,6 +59,7 @@ class Config:
     strip_metadata: bool = False
     url_timeout: float = 30.0
     url_max_size: int = 50_000_000         # 50 MB
+    url_allowed_schemes: tuple[str, ...] = ("http", "https")
 
     def update(self, **kwargs: object) -> None:
         """Update one or more config fields in place.

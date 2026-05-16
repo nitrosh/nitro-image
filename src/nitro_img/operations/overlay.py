@@ -8,18 +8,20 @@ from typing import Callable
 from PIL import Image as PILImage, ImageDraw, ImageFont
 
 
-_POSITION_MAP: dict[str, str] = {
-    "center": "center",
-    "top-left": "top-left",
-    "top-right": "top-right",
-    "bottom-left": "bottom-left",
-    "bottom-right": "bottom-right",
-    "top": "top",
-    "bottom": "bottom",
-    "left": "left",
-    "right": "right",
-    "tiled": "tiled",
-}
+_VALID_POSITIONS: frozenset[str] = frozenset({
+    "center",
+    "top-left", "top-right", "bottom-left", "bottom-right",
+    "top", "bottom", "left", "right",
+})
+
+_VALID_WATERMARK_POSITIONS: frozenset[str] = _VALID_POSITIONS | {"tiled"}
+
+
+def _validate_position(position: str, valid: frozenset[str]) -> None:
+    if position not in valid:
+        raise ValueError(
+            f"Invalid position '{position}'. Expected one of: {sorted(valid)}."
+        )
 
 
 def _calculate_position(
@@ -42,7 +44,20 @@ def _calculate_position(
         "left": (margin, (base_h - over_h) // 2),
         "right": (base_w - over_w - margin, (base_h - over_h) // 2),
     }
-    return positions.get(position, positions["bottom-right"])
+    return positions[position]
+
+
+def _load_watermark(
+    source: str | Path | PILImage.Image,
+) -> PILImage.Image:
+    if isinstance(source, PILImage.Image):
+        wm = source.copy()
+    else:
+        wm = PILImage.open(source)
+        wm.load()
+    if wm.mode != "RGBA":
+        wm = wm.convert("RGBA")
+    return wm
 
 
 def watermark(
@@ -53,29 +68,24 @@ def watermark(
     margin: int = 10,
 ) -> Callable[[PILImage.Image], PILImage.Image]:
     """Apply an image watermark at the given position with opacity."""
+    _validate_position(position, _VALID_WATERMARK_POSITIONS)
+
+    # Load and pre-process the watermark once. Scaling that depends on the base
+    # image still happens inside the closure, but the disk read does not.
+    cached_wm = _load_watermark(watermark_source)
+    if opacity < 1.0:
+        r, g, b, a = cached_wm.split()
+        a = a.point(lambda x: round(x * opacity))
+        cached_wm = PILImage.merge("RGBA", (r, g, b, a))
+
     def _watermark(img: PILImage.Image) -> PILImage.Image:
-        if isinstance(watermark_source, PILImage.Image):
-            wm = watermark_source.copy()
-        else:
-            wm = PILImage.open(watermark_source)
-
-        if wm.mode != "RGBA":
-            wm = wm.convert("RGBA")
-
-        # Scale watermark relative to base image
+        wm = cached_wm
         if scale is not None:
             new_w = max(1, round(img.size[0] * scale))
             ratio = new_w / wm.size[0]
             new_h = max(1, round(wm.size[1] * ratio))
             wm = wm.resize((new_w, new_h), PILImage.LANCZOS)
 
-        # Apply opacity
-        if opacity < 1.0:
-            r, g, b, a = wm.split()
-            a = a.point(lambda x: round(x * opacity))
-            wm = PILImage.merge("RGBA", (r, g, b, a))
-
-        # Ensure base is RGBA for compositing
         base = img.convert("RGBA") if img.mode != "RGBA" else img.copy()
 
         if position == "tiled":
@@ -86,7 +96,6 @@ def watermark(
             pos = _calculate_position(base.size, wm.size, position, margin)
             base.paste(wm, pos, wm)
 
-        # Convert back to original mode if needed
         if img.mode == "RGB":
             return base.convert("RGB")
         return base
@@ -104,10 +113,11 @@ def text_overlay(
     margin: int = 10,
 ) -> Callable[[PILImage.Image], PILImage.Image]:
     """Add a text overlay at the given position."""
+    _validate_position(position, _VALID_POSITIONS)
+
     def _text_overlay(img: PILImage.Image) -> PILImage.Image:
         base = img.convert("RGBA") if img.mode != "RGBA" else img.copy()
 
-        # Create text layer
         txt_layer = PILImage.new("RGBA", base.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(txt_layer)
 
@@ -119,14 +129,12 @@ def text_overlay(
             except OSError:
                 font = ImageFont.load_default()
 
-        # Get text bounding box
         bbox = draw.textbbox((0, 0), text, font=font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
 
         pos = _calculate_position(base.size, (text_w, text_h), position, margin)
 
-        # Parse color and apply opacity
         if isinstance(color, str):
             from PIL import ImageColor
             rgba = ImageColor.getrgb(color)

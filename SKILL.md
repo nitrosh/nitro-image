@@ -429,7 +429,7 @@ results = batch.save(
 
 ### Available Chainable Methods
 
-BatchImage supports the same chainable methods as Image: `resize`, `thumbnail`, `cover`, `contain`, `crop`, `rotate`, `flip`, `mirror`, `grayscale`, `strip_metadata`, `watermark`, `text_overlay`, `brightness`, `contrast`, `saturation`, `sharpen`, `blur`, `sepia`, `rounded_corners`, `jpeg`, `png`, `webp`, `format`.
+BatchImage supports the same chainable methods as Image: `resize`, `thumbnail`, `cover`, `contain`, `crop`, `rotate`, `flip`, `mirror`, `grayscale`, `strip_metadata`, `watermark`, `text_overlay`, `brightness`, `contrast`, `saturation`, `sharpen`, `blur`, `sepia`, `rounded_corners`, `jpeg`, `png`, `webp`, `gif`, `format`.
 
 ---
 
@@ -445,10 +445,12 @@ config.update(
     allow_upscale=False,        # bool, default: False
     auto_orient=True,           # bool, default: True - auto-apply EXIF rotation on load
     strip_metadata=False,       # bool, default: False - auto-strip metadata on load
-    max_input_size=50_000_000,  # int bytes, default: 50MB
-    max_output_dimensions=10_000,  # int pixels, default: 10000
+    max_input_size=50_000_000,  # int bytes, default: 50MB - applies to uploads, files, bytes
+    max_pixels=178_956_970,     # int pixels, default: ~179MP - decompression-bomb guard
+    max_output_dimensions=10_000,  # int pixels, default: 10000 - cap on resize result width/height
     url_timeout=30.0,           # float seconds, default: 30.0
-    url_max_size=50_000_000,    # int bytes, default: 50MB
+    url_max_size=50_000_000,    # int bytes, default: 50MB - download aborts when exceeded
+    url_allowed_schemes=("http", "https"),  # tuple[str, ...] - URL schemes accepted by from_url
 )
 ```
 
@@ -614,8 +616,22 @@ img.save_responsive("static/hero/", [400, 800, 1200, 1600], name="hero")
 
 5. **Format required for byte output.** `.to_bytes()`, `.to_base64()`, etc. need a format set (via `.jpeg()`, `.webp()`, etc.). `.save()` can infer from the file extension.
 
-6. **auto_format is deferred.** `.auto_format()` doesn't pick the format immediately - it resolves when an output method is called. Images with alpha get PNG; photographic images get WebP or JPEG (whichever is smaller).
+6. **auto_format is deferred.** `.auto_format()` doesn't pick the format immediately - it resolves when an output method is called. Images with alpha get PNG; photographic images get WebP or JPEG (whichever is smaller). `auto_format()` is honored by every output method, including `optimize()` and the Django/Flask/FastAPI response helpers.
 
 7. **Presets are standalone.** `Image.preset.thumbnail("photo.jpg")` returns `bytes` directly - it doesn't return an `Image` instance. Presets load, process, and encode in one call.
 
 8. **BatchImage records, doesn't chain Image instances.** Each operation on `BatchImage` records the method name and args. On `.save()`, it creates a fresh `Image` for each file and replays the recorded operations.
+
+9. **Resize caps via `max_output_dimensions`.** Any resize/cover/contain/thumbnail call that would produce an output wider or taller than `config.max_output_dimensions` raises `ImageSizeError`. Bump the config if you need larger output.
+
+10. **`responsive()` widths are measured against the post-pipeline image.** Operations queued before `.responsive(...)` execute first, so chained resizes/crops shrink the source the responsive set is derived from. Skip in-pipeline resizes if you want widths relative to the original.
+
+11. **`from_url` is strict.** Only `http` and `https` schemes are accepted by default (set `config.url_allowed_schemes` to extend). The download streams in chunks and aborts as soon as `config.url_max_size` is exceeded; `Content-Length` headers above the cap short-circuit the request.
+
+12. **Decompression bombs are blocked at load time.** `config.max_pixels` (default ~179MP, matching Pillow's own cap) rejects any source whose dimensions imply more than that many pixels before pixel data is decoded.
+
+13. **`grayscale()` preserves alpha.** RGBA inputs stay RGBA - the alpha channel survives the conversion.
+
+14. **`strip_metadata()` does not preserve animation frames.** Animated GIF/WebP inputs are collapsed to a single frame after stripping.
+
+15. **Position arguments are validated.** `watermark()` and `text_overlay()` raise `ValueError` for unknown `position` values. `"tiled"` is only accepted by `watermark()`.

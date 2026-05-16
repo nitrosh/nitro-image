@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64 as _base64
 from pathlib import Path
 from typing import IO
 
@@ -11,7 +12,7 @@ from .config import config
 from .errors import ImageFormatError
 from .pipeline import Pipeline
 from .types import Anchor, Format
-from .utils import format_from_extension
+from .utils import format_from_extension, mime_type
 
 from . import loaders
 from .operations import resize as resize_ops
@@ -21,8 +22,26 @@ from .operations import metadata as metadata_ops
 from .operations import overlay as overlay_ops
 from .operations import adjust as adjust_ops
 from .operations import effects as effects_ops
-from .output import export
 from .output import optimize as optimize_mod
+from .output.encode import encode as _encode_bytes
+
+
+class _PresetProxy:
+    """Lazy accessor for the shared :class:`Presets` instance.
+
+    Avoids importing ``presets`` at class-definition time so any error in
+    that module surfaces at the call site rather than as a class-loading
+    failure.
+    """
+
+    __slots__ = ()
+    _instance: object | None = None
+
+    def __getattr__(self, name: str) -> object:
+        if _PresetProxy._instance is None:
+            from .presets import presets as _singleton
+            _PresetProxy._instance = _singleton
+        return getattr(_PresetProxy._instance, name)
 
 
 class Image:
@@ -50,9 +69,7 @@ class Image:
         ... )
     """
 
-    # Class-level preset accessor
-    from .presets import Presets as _Presets
-    preset = _Presets()
+    preset = _PresetProxy()
 
     def __init__(self, source: str | Path) -> None:
         """Load an image from a filesystem path.
@@ -65,6 +82,14 @@ class Image:
             ImageSizeError: If the file exceeds ``config.max_input_size``.
         """
         img, fmt, path = loaders.load_from_path(source)
+        self._init_state(img, fmt, path)
+
+    def _init_state(
+        self,
+        img: PILImage.Image,
+        fmt: Format | None,
+        path: str | Path | None,
+    ) -> None:
         self._original: PILImage.Image = img
         self._source_format: Format | None = fmt
         self._source_path: str | Path | None = path
@@ -83,13 +108,7 @@ class Image:
         path: str | Path | None = None,
     ) -> Image:
         inst = cls.__new__(cls)
-        inst._original = img
-        inst._source_format = fmt
-        inst._source_path = path
-        inst._pipeline = Pipeline()
-        inst._output_format = None
-        inst._output_quality = None
-        inst._auto_format = False
+        inst._init_state(img, fmt, path)
         return inst
 
     @classmethod
@@ -165,7 +184,8 @@ class Image:
         """Fetch and load an image from a URL.
 
         Requires the ``url`` extra: ``pip install nitro-image[url]``.
-        Download honours ``config.url_timeout`` and ``config.url_max_size``.
+        Download honours ``config.url_timeout``, ``config.url_max_size``,
+        and ``config.url_allowed_schemes``.
 
         Args:
             url: HTTP(S) URL pointing to an image.
@@ -174,9 +194,10 @@ class Image:
             A new ``Image`` instance.
 
         Raises:
-            ImageLoadError: If the download fails or the response is not
-                a valid image.
-            ImageSizeError: If the response exceeds ``config.url_max_size``.
+            ImageLoadError: If the URL scheme is rejected or the download
+                fails or the response is not a valid image.
+            ImageSizeError: If the response exceeds
+                ``config.url_max_size``.
 
         Example:
             >>> img = Image.from_url("https://example.com/photo.jpg")
@@ -388,7 +409,7 @@ class Image:
         return self
 
     def grayscale(self) -> Image:
-        """Queue a grayscale conversion.
+        """Queue a grayscale conversion that preserves any alpha channel.
 
         Returns:
             The same ``Image`` for chaining.
@@ -456,6 +477,10 @@ class Image:
         Returns:
             The same ``Image`` for chaining.
 
+        Raises:
+            ValueError: If ``position`` is not a known anchor or
+                ``"tiled"``.
+
         Example:
             >>> Image("photo.jpg").watermark("logo.png", position="bottom-right").save("out.jpg")
         """
@@ -490,6 +515,9 @@ class Image:
 
         Returns:
             The same ``Image`` for chaining.
+
+        Raises:
+            ValueError: If ``position`` is not a known anchor.
 
         Example:
             >>> Image("photo.jpg").text_overlay("Draft", font_size=48, color="red").save("out.jpg")
@@ -602,6 +630,8 @@ class Image:
         """Queue rounded-corner masking, producing an alpha channel.
 
         Use a transparency-capable output format such as PNG or WebP.
+        The radius is clamped to ``min(width, height) // 2`` so corner
+        masks never overlap.
 
         Args:
             radius: Corner radius in pixels.
@@ -627,9 +657,13 @@ class Image:
     ) -> dict[int, bytes]:
         """Render the pipeline at multiple widths and return the encoded bytes.
 
-        Executes the pipeline immediately. Widths above the original size
-        are clamped when ``allow_upscale`` is False, which may collapse
-        duplicate entries in the returned dict.
+        Executes the pipeline once, then resizes the result to each
+        target width. ``widths`` are therefore measured against the
+        post-pipeline image, not the original source — chain
+        size-changing operations before ``responsive`` only when that's
+        the intent. Widths above the post-pipeline width are clamped
+        when ``allow_upscale`` is False, which may collapse duplicate
+        entries in the returned dict.
 
         Args:
             widths: Target widths in pixels. Defaults to
@@ -637,7 +671,8 @@ class Image:
             fmt: Output format. Falls back to the format set via
                 ``.jpeg()``/``.webp()``/... or the source format.
             quality: Encoder quality applied to every width.
-            allow_upscale: Permit widths larger than the source width.
+            allow_upscale: Permit widths larger than the post-pipeline
+                width.
 
         Returns:
             Mapping of effective width to encoded bytes.
@@ -651,9 +686,10 @@ class Image:
         if widths is None:
             widths = [320, 640, 1024, 1920]
         out_fmt = fmt or self._output_format or self._source_format or Format.WEBP
+        eff_quality = quality if quality is not None else self._output_quality
         img = self._execute()
         return generate_responsive(
-            img, widths, fmt=out_fmt, quality=quality or self._output_quality,
+            img, widths, fmt=out_fmt, quality=eff_quality,
             allow_upscale=allow_upscale,
         )
 
@@ -670,7 +706,9 @@ class Image:
         """Render the pipeline at multiple widths and save each to disk.
 
         Files are written as ``{name}_{width}.{ext}`` inside
-        ``output_dir``, which is created if it does not exist.
+        ``output_dir``, which is created if it does not exist. Widths
+        are measured against the post-pipeline image; see
+        :meth:`responsive` for the full caveat.
 
         Args:
             output_dir: Destination directory for the generated files.
@@ -681,7 +719,8 @@ class Image:
             fmt: Output format. Falls back to the format set via
                 ``.jpeg()``/``.webp()``/... or the source format.
             quality: Encoder quality applied uniformly.
-            allow_upscale: Permit widths larger than the source width.
+            allow_upscale: Permit widths larger than the post-pipeline
+                width.
 
         Returns:
             Mapping of effective width to the saved ``Path``.
@@ -693,12 +732,13 @@ class Image:
         if widths is None:
             widths = [320, 640, 1024, 1920]
         out_fmt = fmt or self._output_format or self._source_format or Format.WEBP
+        eff_quality = quality if quality is not None else self._output_quality
         if name is None:
             name = Path(self._source_path).stem if self._source_path else "image"
         img = self._execute()
         return save_responsive(
             img, widths, output_dir, name,
-            fmt=out_fmt, quality=quality or self._output_quality,
+            fmt=out_fmt, quality=eff_quality,
             allow_upscale=allow_upscale,
         )
 
@@ -804,6 +844,9 @@ class Image:
 
         Runs the pipeline, then repeatedly encodes at different quality
         levels until the output is at or below ``target_kb`` kilobytes.
+        When ``.auto_format()`` is in effect and no explicit format was
+        chosen, the format is decided per image (alpha → PNG, otherwise
+        WebP) before the binary search begins.
 
         Args:
             target_kb: Desired maximum output size in kilobytes.
@@ -818,8 +861,8 @@ class Image:
             >>> len(data) <= 200 * 1024
             True
         """
-        fmt = self._resolve_format()
         img = self._execute()
+        fmt = self._resolve_output_format(img)
         data, _ = optimize_mod.optimize(
             img, fmt, target_kb, min_quality=min_quality, max_quality=max_quality,
         )
@@ -838,7 +881,6 @@ class Image:
         Example:
             >>> Image("photo.jpg").auto_format().save("out.webp")
         """
-        # Deferred — we resolve at output time
         self._auto_format = True
         return self
 
@@ -939,8 +981,32 @@ class Image:
             "or save to a path with a recognized extension."
         )
 
+    def _resolve_output_format(
+        self,
+        img: PILImage.Image,
+        path: str | Path | None = None,
+    ) -> Format:
+        """Resolve the output format with ``auto_format`` honored."""
+        if self._auto_format and self._output_format is None:
+            return optimize_mod.pick_format(img)
+        return self._resolve_format(path)
+
     def _execute(self) -> PILImage.Image:
         return self._pipeline.execute(self._original.copy())
+
+    def _encode(self, path: str | Path | None = None) -> tuple[bytes, Format]:
+        """Run the pipeline and encode, honoring ``auto_format``.
+
+        Returns the encoded bytes and the format actually chosen so
+        callers can build content-type headers and data URIs without
+        re-deriving the format.
+        """
+        img = self._execute()
+        if self._auto_format and self._output_format is None:
+            return optimize_mod.auto_format(img, quality=self._output_quality)
+        fmt = self._resolve_format(path)
+        data = _encode_bytes(img, fmt, quality=self._output_quality)
+        return data, fmt
 
     def save(self, path: str | Path) -> Path:
         """Run the pipeline and write the result to disk.
@@ -962,15 +1028,15 @@ class Image:
         Example:
             >>> Image("photo.jpg").resize(800).save("out/photo.webp")
         """
-        img = self._execute()
-        if self._auto_format and self._output_format is None:
-            data, fmt = optimize_mod.auto_format(img, quality=self._output_quality)
-            path = Path(path)
+        path = Path(path)
+        data, _ = self._encode(path)
+        try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
-            return path
-        fmt = self._resolve_format(path)
-        return export.save(img, path, fmt, quality=self._output_quality)
+        except Exception as e:
+            from .errors import ImageOutputError
+            raise ImageOutputError(f"Cannot save to '{path}': {e}") from e
+        return path
 
     def to_bytes(self) -> bytes:
         """Run the pipeline and return the encoded image bytes.
@@ -987,12 +1053,8 @@ class Image:
         Example:
             >>> data = Image("photo.jpg").resize(400).webp().to_bytes()
         """
-        img = self._execute()
-        if self._auto_format and self._output_format is None:
-            data, _ = optimize_mod.auto_format(img, quality=self._output_quality)
-            return data
-        fmt = self._resolve_format()
-        return export.to_bytes(img, fmt, quality=self._output_quality)
+        data, _ = self._encode()
+        return data
 
     def to_base64(self) -> str:
         """Run the pipeline and return a base64-encoded string.
@@ -1008,13 +1070,8 @@ class Image:
             >>> Image("photo.jpg").resize(100).webp().to_base64()  # doctest: +ELLIPSIS
             'UklGR...'
         """
-        img = self._execute()
-        if self._auto_format and self._output_format is None:
-            import base64
-            data, _ = optimize_mod.auto_format(img, quality=self._output_quality)
-            return base64.b64encode(data).decode("ascii")
-        fmt = self._resolve_format()
-        return export.to_base64(img, fmt, quality=self._output_quality)
+        data, _ = self._encode()
+        return _base64.b64encode(data).decode("ascii")
 
     def to_data_uri(self) -> str:
         """Run the pipeline and return an inline data URI.
@@ -1031,15 +1088,9 @@ class Image:
             >>> uri.startswith("data:image/webp;base64,")
             True
         """
-        img = self._execute()
-        if self._auto_format and self._output_format is None:
-            import base64 as b64mod
-            from .utils import mime_type
-            data, fmt = optimize_mod.auto_format(img, quality=self._output_quality)
-            b64 = b64mod.b64encode(data).decode("ascii")
-            return f"data:{mime_type(fmt)};base64,{b64}"
-        fmt = self._resolve_format()
-        return export.to_data_uri(img, fmt, quality=self._output_quality)
+        data, fmt = self._encode()
+        b64 = _base64.b64encode(data).decode("ascii")
+        return f"data:{mime_type(fmt)};base64,{b64}"
 
     def to_response(self) -> dict:
         """Run the pipeline and return a framework-agnostic response dict.
@@ -1056,27 +1107,23 @@ class Image:
             >>> resp["content_type"]
             'image/webp'
         """
-        img = self._execute()
-        if self._auto_format and self._output_format is None:
-            from .utils import mime_type
-            data, fmt = optimize_mod.auto_format(img, quality=self._output_quality)
-            return {
-                "body": data,
-                "content_type": mime_type(fmt),
-                "content_length": len(data),
-            }
-        fmt = self._resolve_format()
-        return export.to_response(img, fmt, quality=self._output_quality)
+        data, fmt = self._encode()
+        return {
+            "body": data,
+            "content_type": mime_type(fmt),
+            "content_length": len(data),
+        }
 
     # -- Framework integration responses --
 
     def to_django_response(self, *, filename: str | None = None) -> object:
         """Run the pipeline and return a Django ``HttpResponse``.
 
-        Requires Django to be installed.
+        Requires Django to be installed. Honours ``.auto_format()`` so
+        the response Content-Type matches the chosen format.
 
         Args:
-            filename: Optional download filename; sets a
+            filename: Optional download filename; sets a sanitised
                 ``Content-Disposition: inline`` header when provided.
 
         Returns:
@@ -1090,18 +1137,18 @@ class Image:
             >>> def view(request):  # doctest: +SKIP
             ...     return Image("photo.jpg").resize(400).webp().to_django_response()
         """
-        from .integrations import to_django_response
-        fmt = self._resolve_format()
-        img = self._execute()
-        return to_django_response(img, fmt, quality=self._output_quality, filename=filename)
+        from .integrations import _build_response_for_django
+        data, fmt = self._encode()
+        return _build_response_for_django(data, fmt, filename=filename)
 
     def to_flask_response(self, *, filename: str | None = None) -> object:
         """Run the pipeline and return a Flask ``Response``.
 
-        Requires Flask to be installed.
+        Requires Flask to be installed. Honours ``.auto_format()`` so
+        the response Content-Type matches the chosen format.
 
         Args:
-            filename: Optional download filename; sets a
+            filename: Optional download filename; sets a sanitised
                 ``Content-Disposition: inline`` header when provided.
 
         Returns:
@@ -1116,18 +1163,19 @@ class Image:
             ... def thumb():
             ...     return Image("photo.jpg").resize(400).webp().to_flask_response()
         """
-        from .integrations import to_flask_response
-        fmt = self._resolve_format()
-        img = self._execute()
-        return to_flask_response(img, fmt, quality=self._output_quality, filename=filename)
+        from .integrations import _build_response_for_flask
+        data, fmt = self._encode()
+        return _build_response_for_flask(data, fmt, filename=filename)
 
     def to_fastapi_response(self, *, filename: str | None = None) -> object:
         """Run the pipeline and return a FastAPI/Starlette ``Response``.
 
         Requires Starlette (installed transitively with FastAPI).
+        Honours ``.auto_format()`` so the response Content-Type matches
+        the chosen format.
 
         Args:
-            filename: Optional download filename; sets a
+            filename: Optional download filename; sets a sanitised
                 ``Content-Disposition: inline`` header when provided.
 
         Returns:
@@ -1142,10 +1190,9 @@ class Image:
             ... async def thumb():
             ...     return Image("photo.jpg").resize(400).webp().to_fastapi_response()
         """
-        from .integrations import to_fastapi_response
-        fmt = self._resolve_format()
-        img = self._execute()
-        return to_fastapi_response(img, fmt, quality=self._output_quality, filename=filename)
+        from .integrations import _build_response_for_fastapi
+        data, fmt = self._encode()
+        return _build_response_for_fastapi(data, fmt, filename=filename)
 
     # -- Info --
 

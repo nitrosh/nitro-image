@@ -392,6 +392,18 @@ class BatchImage:
         self._output_quality = quality
         return self
 
+    def gif(self) -> BatchImage:
+        """Select GIF for every image in the batch.
+
+        Returns:
+            The same ``BatchImage`` for chaining.
+
+        Example:
+            >>> BatchImage("frames/*.png").gif().save("out/{name}.gif")
+        """
+        self._output_format = Format.GIF
+        return self
+
     def format(self, fmt: Format | str, quality: int | None = None) -> BatchImage:
         """Select the output format by enum or case-insensitive string.
 

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nitro-image"
-version = "1.0.2"
-description = "Fast, friendly image processing for web apps and SaaS"
+version = "1.1.1"
+description = "Resize, convert, and optimize images with a chainable API. Generate responsive sizes in one call."
 readme = "README.md"
 license = "BSD-3-Clause"
 requires-python = ">=3.10"

@@ -1,25 +1,42 @@
-"""Framework integration helpers for Django, Flask, and FastAPI."""
+"""Framework integration helpers for Django, Flask, and FastAPI.
+
+The public entry points are :meth:`Image.to_django_response`,
+:meth:`Image.to_flask_response`, and :meth:`Image.to_fastapi_response`.
+Helpers in this module accept already-encoded bytes plus the chosen
+:class:`Format` so the ``auto_format`` decision can flow through to the
+response Content-Type without re-encoding the image.
+"""
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from .types import Format
 from .utils import mime_type
-from .output.encode import encode
-
-from PIL import Image as PILImage
 
 
-def to_django_response(
-    img: PILImage.Image,
+def _content_disposition(filename: str) -> str:
+    """Build a safe ``Content-Disposition`` header value (RFC 6266).
+
+    Strips control characters and quote/backslash from the ASCII
+    fallback, and pairs it with an RFC 5987 ``filename*`` so non-ASCII
+    names round-trip without breaking the header.
+    """
+    cleaned = "".join(
+        ch for ch in filename if 32 <= ord(ch) < 127 and ch not in '"\\'
+    )
+    if not cleaned:
+        cleaned = "image"
+    encoded = quote(filename, safe="")
+    return f'inline; filename="{cleaned}"; filename*=UTF-8\'\'{encoded}'
+
+
+def _build_response_for_django(
+    data: bytes,
     fmt: Format,
     *,
-    quality: int | None = None,
     filename: str | None = None,
 ) -> object:
-    """Create a Django HttpResponse with the image.
-
-    Requires Django to be installed.
-    """
     try:
         from django.http import HttpResponse
     except ImportError:
@@ -27,25 +44,18 @@ def to_django_response(
             "Django is required for to_django_response(). "
             "Install with: pip install django"
         )
-
-    data = encode(img, fmt, quality=quality)
     response = HttpResponse(data, content_type=mime_type(fmt))
     if filename:
-        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        response["Content-Disposition"] = _content_disposition(filename)
     return response
 
 
-def to_flask_response(
-    img: PILImage.Image,
+def _build_response_for_flask(
+    data: bytes,
     fmt: Format,
     *,
-    quality: int | None = None,
     filename: str | None = None,
 ) -> object:
-    """Create a Flask Response with the image.
-
-    Requires Flask to be installed.
-    """
     try:
         from flask import Response
     except ImportError:
@@ -53,25 +63,18 @@ def to_flask_response(
             "Flask is required for to_flask_response(). "
             "Install with: pip install flask"
         )
-
-    data = encode(img, fmt, quality=quality)
     headers = {}
     if filename:
-        headers["Content-Disposition"] = f'inline; filename="{filename}"'
+        headers["Content-Disposition"] = _content_disposition(filename)
     return Response(data, mimetype=mime_type(fmt), headers=headers)
 
 
-def to_fastapi_response(
-    img: PILImage.Image,
+def _build_response_for_fastapi(
+    data: bytes,
     fmt: Format,
     *,
-    quality: int | None = None,
     filename: str | None = None,
 ) -> object:
-    """Create a FastAPI/Starlette Response with the image.
-
-    Requires starlette to be installed (included with FastAPI).
-    """
     try:
         from starlette.responses import Response
     except ImportError:
@@ -79,9 +82,7 @@ def to_fastapi_response(
             "Starlette/FastAPI is required for to_fastapi_response(). "
             "Install with: pip install fastapi"
         )
-
-    data = encode(img, fmt, quality=quality)
     headers = {}
     if filename:
-        headers["Content-Disposition"] = f'inline; filename="{filename}"'
+        headers["Content-Disposition"] = _content_disposition(filename)
     return Response(content=data, media_type=mime_type(fmt), headers=headers)

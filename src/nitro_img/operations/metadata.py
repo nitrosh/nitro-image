@@ -36,9 +36,20 @@ def auto_orient(img: PILImage.Image) -> PILImage.Image:
 
 
 def strip_metadata() -> Op:
-    """Remove all EXIF, IPTC, and XMP metadata."""
+    """Remove all EXIF, IPTC, and XMP metadata.
+
+    Produces a fresh image carrying only pixel data and palette (when
+    applicable). Does not attempt to preserve animation frames - the
+    output is always a single-frame image.
+    """
     def _strip(img: PILImage.Image) -> PILImage.Image:
-        cleaned = PILImage.frombytes(img.mode, img.size, img.tobytes())
+        if img.mode == "P":
+            cleaned = PILImage.new("P", img.size)
+            cleaned.putpalette(img.getpalette())
+            cleaned.paste(img)
+        else:
+            cleaned = PILImage.new(img.mode, img.size)
+            cleaned.paste(img)
         return cleaned
     return _strip
 
