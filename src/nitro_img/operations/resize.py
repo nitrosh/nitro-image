@@ -6,7 +6,18 @@ from typing import Callable
 
 from PIL import Image as PILImage
 
+from ..config import config
+from ..errors import ImageSizeError
+
 Op = Callable[[PILImage.Image], PILImage.Image]
+
+
+def _check_output_dims(width: int, height: int) -> None:
+    cap = config.max_output_dimensions
+    if width > cap or height > cap:
+        raise ImageSizeError(
+            f"Output {width}x{height} exceeds max_output_dimensions={cap}"
+        )
 
 
 def resize_fit(
@@ -33,7 +44,6 @@ def resize_fit(
             target_w = round(orig_w * ratio)
             target_h = height
 
-        # Maintain aspect ratio — fit within the box
         ratio_w = target_w / orig_w
         ratio_h = target_h / orig_h
         ratio = min(ratio_w, ratio_h)
@@ -43,6 +53,7 @@ def resize_fit(
 
         new_w = max(1, round(orig_w * ratio))
         new_h = max(1, round(orig_h * ratio))
+        _check_output_dims(new_w, new_h)
         return img.resize((new_w, new_h), PILImage.LANCZOS)
 
     return _resize
@@ -58,6 +69,7 @@ def thumbnail(
     def _thumbnail(img: PILImage.Image) -> PILImage.Image:
         if not allow_upscale and img.size[0] <= width and img.size[1] <= height:
             return img
+        _check_output_dims(width, height)
         img = img.copy()
         img.thumbnail((width, height), PILImage.LANCZOS)
         return img
@@ -79,13 +91,16 @@ def cover(
         ratio = max(ratio_w, ratio_h)
 
         if not allow_upscale and ratio > 1.0:
-            ratio = max(ratio_w, ratio_h)
-            if ratio > 1.0:
-                # Can't cover without upscaling — crop from center at original size
-                return _center_crop(img, min(width, orig_w), min(height, orig_h))
+            # Source is smaller than target on at least one axis. Crop from the
+            # original at whatever size we can produce without enlarging.
+            crop_w = min(width, orig_w)
+            crop_h = min(height, orig_h)
+            _check_output_dims(crop_w, crop_h)
+            return _center_crop(img, crop_w, crop_h)
 
         new_w = max(1, round(orig_w * ratio))
         new_h = max(1, round(orig_h * ratio))
+        _check_output_dims(width, height)
         img = img.resize((new_w, new_h), PILImage.LANCZOS)
         return _center_crop(img, width, height)
 
@@ -111,6 +126,7 @@ def contain(
 
         new_w = max(1, round(orig_w * ratio))
         new_h = max(1, round(orig_h * ratio))
+        _check_output_dims(width, height)
         resized = img.resize((new_w, new_h), PILImage.LANCZOS)
 
         mode = "RGBA" if img.mode == "RGBA" else "RGB"

@@ -43,23 +43,23 @@ def rounded_corners(radius: int) -> Callable[[PILImage.Image], PILImage.Image]:
     def _rounded(img: PILImage.Image) -> PILImage.Image:
         img = img.convert("RGBA")
         w, h = img.size
+        # Clamp the radius so corner masks never overlap or escape the canvas.
+        r = max(0, min(radius, w // 2, h // 2))
 
         mask = PILImage.new("L", (w, h), 255)
-        draw = ImageDraw.Draw(mask)
+        if r == 0:
+            img.putalpha(mask)
+            return img
 
-        # Draw black corners (will become transparent)
-        # Top-left
-        draw.rectangle([0, 0, radius, radius], fill=0)
-        draw.pieslice([0, 0, radius * 2, radius * 2], 180, 270, fill=255)
-        # Top-right
-        draw.rectangle([w - radius, 0, w, radius], fill=0)
-        draw.pieslice([w - radius * 2, 0, w, radius * 2], 270, 360, fill=255)
-        # Bottom-left
-        draw.rectangle([0, h - radius, radius, h], fill=0)
-        draw.pieslice([0, h - radius * 2, radius * 2, h], 90, 180, fill=255)
-        # Bottom-right
-        draw.rectangle([w - radius, h - radius, w, h], fill=0)
-        draw.pieslice([w - radius * 2, h - radius * 2, w, h], 0, 90, fill=255)
+        draw = ImageDraw.Draw(mask)
+        draw.rectangle([0, 0, r, r], fill=0)
+        draw.pieslice([0, 0, r * 2, r * 2], 180, 270, fill=255)
+        draw.rectangle([w - r, 0, w, r], fill=0)
+        draw.pieslice([w - r * 2, 0, w, r * 2], 270, 360, fill=255)
+        draw.rectangle([0, h - r, r, h], fill=0)
+        draw.pieslice([0, h - r * 2, r * 2, h], 90, 180, fill=255)
+        draw.rectangle([w - r, h - r, w, h], fill=0)
+        draw.pieslice([w - r * 2, h - r * 2, w, h], 0, 90, fill=255)
 
         img.putalpha(mask)
         return img

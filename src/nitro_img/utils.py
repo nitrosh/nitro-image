@@ -37,6 +37,15 @@ _FORMAT_TO_MIME: dict[Format, str] = {
     Format.TIFF: "image/tiff",
 }
 
+_FORMAT_TO_EXT: dict[Format, str] = {
+    Format.JPEG: ".jpg",
+    Format.PNG: ".png",
+    Format.WEBP: ".webp",
+    Format.GIF: ".gif",
+    Format.BMP: ".bmp",
+    Format.TIFF: ".tiff",
+}
+
 
 def format_from_extension(path: str | Path) -> Format | None:
     ext = os.path.splitext(str(path))[1].lower()
@@ -54,7 +63,4 @@ def mime_type(fmt: Format) -> str:
 
 
 def extension_for_format(fmt: Format) -> str:
-    for ext, f in _EXT_TO_FORMAT.items():
-        if f == fmt:
-            return ext
-    return ".bin"
+    return _FORMAT_TO_EXT.get(fmt, ".bin")

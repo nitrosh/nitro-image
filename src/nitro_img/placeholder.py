@@ -26,38 +26,33 @@ def lqip(img: PILImage.Image, width: int = 20) -> str:
     return f"data:image/webp;base64,{b64}"
 
 
+def _quantized_color_counts(img: PILImage.Image, sample_size: int) -> Counter:
+    small = img.copy()
+    small.thumbnail((sample_size, sample_size), PILImage.LANCZOS)
+    small = small.convert("RGB")
+
+    raw = small.tobytes()
+    pixels = zip(raw[0::3], raw[1::3], raw[2::3])
+    quantized = (
+        ((r >> 4) << 4, (g >> 4) << 4, (b >> 4) << 4)
+        for r, g, b in pixels
+    )
+    return Counter(quantized)
+
+
 def dominant_color(img: PILImage.Image, sample_size: int = 100) -> str:
     """Extract the dominant color as a hex string (#RRGGBB).
 
     Downscales the image then finds the most common color bucket.
     """
-    small = img.copy()
-    small.thumbnail((sample_size, sample_size), PILImage.LANCZOS)
-    small = small.convert("RGB")
-
-    pixels = list(zip(small.tobytes()[0::3], small.tobytes()[1::3], small.tobytes()[2::3]))
-    # Quantize to reduce color space (bucket to nearest 16)
-    quantized = [
-        ((r >> 4) << 4, (g >> 4) << 4, (b >> 4) << 4)
-        for r, g, b in pixels
-    ]
-    counter = Counter(quantized)
+    counter = _quantized_color_counts(img, sample_size)
     most_common = counter.most_common(1)[0][0]
     return f"#{most_common[0]:02x}{most_common[1]:02x}{most_common[2]:02x}"
 
 
 def color_palette(img: PILImage.Image, count: int = 5, sample_size: int = 100) -> list[str]:
     """Extract a color palette as a list of hex strings."""
-    small = img.copy()
-    small.thumbnail((sample_size, sample_size), PILImage.LANCZOS)
-    small = small.convert("RGB")
-
-    pixels = list(zip(small.tobytes()[0::3], small.tobytes()[1::3], small.tobytes()[2::3]))
-    quantized = [
-        ((r >> 4) << 4, (g >> 4) << 4, (b >> 4) << 4)
-        for r, g, b in pixels
-    ]
-    counter = Counter(quantized)
+    counter = _quantized_color_counts(img, sample_size)
     return [
         f"#{r:02x}{g:02x}{b:02x}"
         for (r, g, b), _ in counter.most_common(count)
